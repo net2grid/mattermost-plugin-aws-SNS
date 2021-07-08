@@ -168,6 +168,12 @@ func (p *Plugin) handleNotification(body io.Reader) {
 		p.sendPostNotification(p.createSNSMessageNotificationAttachment(notification.Subject, messageNotification))
 		return
 	}
+
+	if isOpenBucketAlert, messageNotification := p.isOpenBucketAlert(notification.Message); isOpenBucketAlert {
+		p.API.LogDebug("Processing Open Bucket Alert")
+		p.sendPostNotification(p.createOpenBucketAlertsNotificationAttachment(notification.Subject, messageNotification))
+		return
+	}
 }
 
 func (p *Plugin) sendPostNotification(attachment model.SlackAttachment) {
@@ -204,6 +210,19 @@ func (p *Plugin) isRDSEvent(message string) (bool, SNSRdsEventNotification) {
 		return false, messageNotification
 	}
 	return len(messageNotification.EventID) > 0, messageNotification
+}
+
+func (p *Plugin) isOpenBucketAlert(message string) (bool, OpenBucketAlertsNotification) {
+	var messageNotification OpenBucketAlertsNotification
+	if err := json.Unmarshal([]byte(message), &messageNotification); err != nil {
+		p.API.LogError(
+			"AWSSNS HandleNotification Decode Error on Open Bucket Alert message notification",
+			"err", err.Error(),
+			"message", message)
+		return false, messageNotification
+	}
+
+	return len(messageNotification.Detail.Id) > 0, messageNotification
 }
 
 func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification SNSRdsEventNotification) model.SlackAttachment {
@@ -264,6 +283,33 @@ func (p *Plugin) createSNSMessageNotificationAttachment(subject string, messageN
 
 	return attachment
 }
+
+func (p *Plugin) createOpenBucketAlertsNotificationAttachment(subject string, messageNotification OpenBucketAlertsNotification) model.SlackAttachment {
+	p.API.LogDebug("AWSSNS HandleNotification Open Bucket Alert", "MESSAGE", subject)
+	var fields []*model.SlackAttachmentField
+
+	fields = addFields(fields, "Version", messageNotification.Detail.Version, true)
+	fields = addFields(fields, "Id", messageNotification.Detail.Id, true)
+	fields = addFields(fields, "Time", messageNotification.Time, true)
+	fields = addFields(fields, "Region", messageNotification.Region, true)
+	fields = addFields(fields, "Status", messageNotification.Detail.Status, true)
+	fields = addFields(fields, "ResourceType", messageNotification.Detail.ResourceType, true)
+	fields = addFields(fields, "Resource", messageNotification.Detail.Resource, true)
+	fields = addFields(fields, "CreatedAt", messageNotification.Detail.CreatedAt, true)
+	fields = addFields(fields, "AnalyzedAt", messageNotification.Detail.AnalyzedAt, true)
+	fields = addFields(fields, "UpdatedAt", messageNotification.Detail.UpdatedAt, true)
+	fields = addFields(fields, "Actions", strings.Join(messageNotification.Detail.Action, " "), true)
+	fields = addFields(fields, "IsDeleted", strconv.FormatBool(messageNotification.Detail.IsDeleted), true)
+	fields = addFields(fields, "IsPublic", strconv.FormatBool(messageNotification.Detail.IsPublic), true)
+
+	attachment := model.SlackAttachment{
+		Title:  subject,
+		Fields: fields,
+	}
+
+	return attachment
+}
+
 func (p *Plugin) handleUnsubscribeConfirmation(body io.Reader) {
 	var subscribe SubscribeInput
 	if err := json.NewDecoder(body).Decode(&subscribe); err != nil {
