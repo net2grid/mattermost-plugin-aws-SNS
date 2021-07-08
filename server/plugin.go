@@ -168,7 +168,7 @@ func (p *Plugin) handleNotification(body io.Reader, alias string) {
 
 	if isRdsEvent, messageNotification := p.isRDSEvent(notification.Message); isRdsEvent {
 		p.API.LogDebug("Processing RDS Event")
-		p.sendPostNotification(p.createSNSRdsEventAttachment(notification.Subject, messageNotification))
+		p.sendPostNotification(p.createSNSRdsEventAttachment(notification.Subject, messageNotification, alias))
 		return
 	}
 
@@ -231,9 +231,15 @@ func (p *Plugin) isCloudformationEvent(message string) (bool, SNSCloudformationE
 	return len(messageNotification.EventId) > 0, messageNotification
 }
 
-func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification SNSRdsEventNotification) model.SlackAttachment {
+func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification SNSRdsEventNotification, alias string) model.SlackAttachment {
 	p.API.LogDebug("AWSSNS HandleNotification RDS Event", "MESSAGE", subject)
+
 	var fields []*model.SlackAttachmentField
+	//if included in the url, show the name of the platform at the aws account field
+	if alias != "" {
+		fields = addFields(fields, "AWS account", alias, true)
+	}
+
 	fields = addFields(fields, "Event Source", messageNotification.EventSource, true)
 	fields = addFields(fields, "Event Time", messageNotification.EventTime, true)
 	fields = addFields(fields, "Identifier Link", messageNotification.IdentifierLink, true)
@@ -266,7 +272,6 @@ func (p *Plugin) createSNSCloudformationEventAttachment(subject string, messageN
 	fields = addFields(fields, "ResourceType", messageNotification.ResourceType, true)
 	fields = addFields(fields, "Timestamp", messageNotification.Timestamp, true)
 	fields = addFields(fields, "ResourceStatus", messageNotification.ResourceStatus, true)
-	fields = addFields(fields, "ResourceProperties", messageNotification.ResourceProperties, true)
 	fields = addFields(fields, "ClientRequestToken", messageNotification.ClientRequestToken, true)
 
 	attachment := model.SlackAttachment{
