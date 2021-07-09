@@ -160,12 +160,6 @@ func (p *Plugin) handleNotification(body io.Reader, alias string) {
 		return
 	}
 
-	if isCloudformationEvent, messageNotification := p.isCloudformationEvent(notification.Message); isCloudformationEvent {
-		p.API.LogDebug("Processing Cloudformation Event")
-		p.sendPostNotification(p.createSNSCloudformationEventAttachment(notification.Subject, messageNotification, alias))
-		return
-	}
-
 	if isRdsEvent, messageNotification := p.isRDSEvent(notification.Message); isRdsEvent {
 		p.API.LogDebug("Processing RDS Event")
 		p.sendPostNotification(p.createSNSRdsEventAttachment(notification.Subject, messageNotification, alias))
@@ -175,6 +169,13 @@ func (p *Plugin) handleNotification(body io.Reader, alias string) {
 	if isAlarm, messageNotification := p.isCloudWatchAlarm(notification.Message); isAlarm {
 		p.API.LogDebug("Processing CloudWatch alarm")
 		p.sendPostNotification(p.createSNSMessageNotificationAttachment(notification.Subject, messageNotification, alias))
+		return
+	}
+
+	//this type of event should be evaluated last
+	if isCloudformationEvent, messageNotification := p.isCloudformationEvent(notification.Message); isCloudformationEvent {
+		p.API.LogDebug("Processing Cloudformation Event")
+		p.sendPostNotification(p.createSNSCloudformationEventAttachment(notification.Subject, messageNotification, alias))
 		return
 	}
 }
@@ -265,14 +266,12 @@ func (p *Plugin) createSNSCloudformationEventAttachment(subject string, messageN
 	}
 
 	fields = addFields(fields, "StackId", messageNotification.StackId, true)
-	fields = addFields(fields, "EventId", messageNotification.EventId, true)
 	fields = addFields(fields, "StackName", messageNotification.StackName, true)
 	fields = addFields(fields, "LogicalResourceId", messageNotification.LogicalResourceId, true)
 	fields = addFields(fields, "PhysicalResourceId", messageNotification.PhysicalResourceId, true)
 	fields = addFields(fields, "ResourceType", messageNotification.ResourceType, true)
 	fields = addFields(fields, "Timestamp", messageNotification.Timestamp, true)
 	fields = addFields(fields, "ResourceStatus", messageNotification.ResourceStatus, true)
-	fields = addFields(fields, "ClientRequestToken", messageNotification.ClientRequestToken, true)
 
 	attachment := model.SlackAttachment{
 		Title:  subject,
@@ -287,11 +286,9 @@ func (p *Plugin) createSNSMessageNotificationAttachment(subject string, messageN
 	var fields []*model.SlackAttachmentField
 
 	//if included in the url, show the name of the platform at the aws account field
-	aws_account := ""
-	if alias == "" {
-		aws_account = messageNotification.AWSAccountID
-	} else {
-		aws_account = alias
+	aws_account := string(messageNotification.AWSAccountID)
+	if alias != "" {
+		aws_account = alias + " ( " + aws_account + " ) "
 	}
 
 	fields = addFields(fields, "AlarmName", messageNotification.AlarmName, true)
