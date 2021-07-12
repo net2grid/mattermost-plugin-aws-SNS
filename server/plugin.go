@@ -115,6 +115,9 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 		p.API.LogError("AWSSNS TOKEN INVALID")
 		return
 	}
+
+	alias := r.URL.Query().Get("alias")
+
 	snsMessageType := r.Header.Get("x-amz-sns-message-type")
 	if snsMessageType == "" {
 		p.handleAction(w, r)
@@ -124,7 +127,7 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 			p.handleSubscriptionConfirmation(r.Body)
 		case "Notification":
 			p.API.LogDebug("AWSSNS HandleNotification")
-			p.handleNotification(r.Body)
+			p.handleNotification(r.Body, alias)
 
 		case "UnsubscribeConfirmation":
 			p.handleUnsubscribeConfirmation(r.Body)
@@ -150,7 +153,7 @@ func (p *Plugin) handleSubscriptionConfirmation(body io.Reader) {
 	p.sendSubscribeConfirmationMessage(subscribe.Message, subscribe.SubscribeURL)
 }
 
-func (p *Plugin) handleNotification(body io.Reader) {
+func (p *Plugin) handleNotification(body io.Reader, alias string) {
 	var notification SNSNotification
 	if err := json.NewDecoder(body).Decode(&notification); err != nil {
 		p.API.LogDebug("AWSSNS HandleNotification Decode Error", "err=", err.Error())
@@ -165,7 +168,7 @@ func (p *Plugin) handleNotification(body io.Reader) {
 
 	if isAlarm, messageNotification := p.isCloudWatchAlarm(notification.Message); isAlarm {
 		p.API.LogDebug("Processing CloudWatch alarm")
-		p.sendPostNotification(p.createSNSMessageNotificationAttachment(notification.Subject, messageNotification))
+		p.sendPostNotification(p.createSNSMessageNotificationAttachment(notification.Subject, messageNotification, alias))
 		return
 	}
 }
@@ -224,12 +227,19 @@ func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification
 	return attachment
 }
 
-func (p *Plugin) createSNSMessageNotificationAttachment(subject string, messageNotification SNSMessageNotification) model.SlackAttachment {
+func (p *Plugin) createSNSMessageNotificationAttachment(subject string, messageNotification SNSMessageNotification, alias string) model.SlackAttachment {
 	p.API.LogDebug("AWSSNS HandleNotification", "MESSAGE", subject)
 	var fields []*model.SlackAttachmentField
+
+	//if included in the url, show the name of the platform at the aws account field
+	aws_account := string(messageNotification.AWSAccountID)
+	if alias != "" {
+		aws_account = alias + " ( " + aws_account + " ) "
+	}
+
 	fields = addFields(fields, "AlarmName", messageNotification.AlarmName, true)
 	fields = addFields(fields, "AlarmDescription", messageNotification.AlarmDescription, true)
-	fields = addFields(fields, "AWS Account", messageNotification.AWSAccountID, true)
+	fields = addFields(fields, "AWS Account", aws_account, true)
 	fields = addFields(fields, "Region", messageNotification.Region, true)
 	fields = addFields(fields, "New State", messageNotification.NewStateValue, true)
 	fields = addFields(fields, "Old State", messageNotification.OldStateValue, true)
