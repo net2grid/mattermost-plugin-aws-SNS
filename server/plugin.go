@@ -158,6 +158,12 @@ func (p *Plugin) handleNotification(body io.Reader) {
 		return
 	}
 
+	if isCloudformationEvent, messageNotification := p.isCloudformationEvent(notification.Message); isCloudformationEvent {
+		p.API.LogDebug("Processing Cloudformation Event")
+		p.sendPostNotification(p.createSNSCloudformationEventAttachment(notification.Subject, messageNotification))
+		return
+	}
+
 	if isRdsEvent, messageNotification := p.isRDSEvent(notification.Message); isRdsEvent {
 		p.API.LogDebug("Processing RDS Event")
 		p.sendPostNotification(p.createSNSRdsEventAttachment(notification.Subject, messageNotification))
@@ -170,12 +176,6 @@ func (p *Plugin) handleNotification(body io.Reader) {
 		return
 	}
 
-	//this type of event should be evaluated last
-	if isCloudformationEvent, messageNotification := p.isCloudformationEvent(notification.Message); isCloudformationEvent {
-		p.API.LogDebug("Processing Cloudformation Event")
-		p.sendPostNotification(p.createSNSCloudformationEventAttachment(notification.Subject, messageNotification))
-		return
-	}
 }
 
 func (p *Plugin) sendPostNotification(attachment model.SlackAttachment) {
@@ -218,7 +218,11 @@ func (p *Plugin) isCloudformationEvent(message string) (bool, SNSCloudformationE
 	var messageNotification SNSCloudformationEventNotification
 
 	// alter message in order to decode it in json format
-	messagejson := messageToJson(message)
+	is_correct_format, messagejson := messageToJson(message)
+
+	if !is_correct_format {
+		return false, messageNotification
+	}
 
 	if err := json.Unmarshal([]byte(messagejson), &messageNotification); err != nil {
 		p.API.LogError(
@@ -538,15 +542,30 @@ func addFields(fields []*model.SlackAttachmentField, title, msg string, short bo
 	})
 }
 
-func messageToJson(message string) []uint8 {
+func messageToJson(message string) (bool, []uint8) {
 
 	messagefields := strings.Split(message, "\n")
-	var fields = make(map[string]string)
-	for _, field := range messagefields[:len(messagefields)-1] {
-		fields[strings.Split(field, "=")[0]] = strings.Split(field, "=")[1]
-	}
-	jsonmessage, _ := json.Marshal(fields)
+	if len(messagefields) > 0 {
 
-	return jsonmessage
+		//split each line of the cloudformation event message to field and value
+		var fields = make(map[string]string)
+		for _, field := range messagefields[:len(messagefields)-1] {
+			if len(strings.Split(field, "=")) == 2 {
+
+				fields[strings.Split(field, "=")[0]] = strings.Split(field, "=")[1]
+
+			} else {
+
+				return false, nil
+			}
+
+		}
+		jsonmessage, _ := json.Marshal(fields)
+
+		return true, jsonmessage
+
+	} else {
+		return false, nil
+	}
 
 }
