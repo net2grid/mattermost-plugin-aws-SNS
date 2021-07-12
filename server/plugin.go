@@ -116,8 +116,6 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	alias := r.URL.Query().Get("alias")
-
 	snsMessageType := r.Header.Get("x-amz-sns-message-type")
 	if snsMessageType == "" {
 		p.handleAction(w, r)
@@ -127,7 +125,7 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 			p.handleSubscriptionConfirmation(r.Body)
 		case "Notification":
 			p.API.LogDebug("AWSSNS HandleNotification")
-			p.handleNotification(r.Body, alias)
+			p.handleNotification(r.Body)
 
 		case "UnsubscribeConfirmation":
 			p.handleUnsubscribeConfirmation(r.Body)
@@ -153,7 +151,7 @@ func (p *Plugin) handleSubscriptionConfirmation(body io.Reader) {
 	p.sendSubscribeConfirmationMessage(subscribe.Message, subscribe.SubscribeURL)
 }
 
-func (p *Plugin) handleNotification(body io.Reader, alias string) {
+func (p *Plugin) handleNotification(body io.Reader) {
 	var notification SNSNotification
 	if err := json.NewDecoder(body).Decode(&notification); err != nil {
 		p.API.LogDebug("AWSSNS HandleNotification Decode Error", "err=", err.Error())
@@ -162,20 +160,20 @@ func (p *Plugin) handleNotification(body io.Reader, alias string) {
 
 	if isRdsEvent, messageNotification := p.isRDSEvent(notification.Message); isRdsEvent {
 		p.API.LogDebug("Processing RDS Event")
-		p.sendPostNotification(p.createSNSRdsEventAttachment(notification.Subject, messageNotification, alias))
+		p.sendPostNotification(p.createSNSRdsEventAttachment(notification.Subject, messageNotification))
 		return
 	}
 
 	if isAlarm, messageNotification := p.isCloudWatchAlarm(notification.Message); isAlarm {
 		p.API.LogDebug("Processing CloudWatch alarm")
-		p.sendPostNotification(p.createSNSMessageNotificationAttachment(notification.Subject, messageNotification, alias))
+		p.sendPostNotification(p.createSNSMessageNotificationAttachment(notification.Subject, messageNotification))
 		return
 	}
 
 	//this type of event should be evaluated last
 	if isCloudformationEvent, messageNotification := p.isCloudformationEvent(notification.Message); isCloudformationEvent {
 		p.API.LogDebug("Processing Cloudformation Event")
-		p.sendPostNotification(p.createSNSCloudformationEventAttachment(notification.Subject, messageNotification, alias))
+		p.sendPostNotification(p.createSNSCloudformationEventAttachment(notification.Subject, messageNotification))
 		return
 	}
 }
@@ -232,14 +230,10 @@ func (p *Plugin) isCloudformationEvent(message string) (bool, SNSCloudformationE
 	return len(messageNotification.EventId) > 0, messageNotification
 }
 
-func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification SNSRdsEventNotification, alias string) model.SlackAttachment {
+func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification SNSRdsEventNotification) model.SlackAttachment {
 	p.API.LogDebug("AWSSNS HandleNotification RDS Event", "MESSAGE", subject)
 
 	var fields []*model.SlackAttachmentField
-	//if included in the url, show the name of the platform at the aws account field
-	if alias != "" {
-		fields = addFields(fields, "AWS account", alias, true)
-	}
 
 	fields = addFields(fields, "Event Source", messageNotification.EventSource, true)
 	fields = addFields(fields, "Event Time", messageNotification.EventTime, true)
@@ -256,14 +250,9 @@ func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification
 	return attachment
 }
 
-func (p *Plugin) createSNSCloudformationEventAttachment(subject string, messageNotification SNSCloudformationEventNotification, alias string) model.SlackAttachment {
+func (p *Plugin) createSNSCloudformationEventAttachment(subject string, messageNotification SNSCloudformationEventNotification) model.SlackAttachment {
 	p.API.LogDebug("AWSSNS HandleNotification Cloudformation Event", "MESSAGE", subject)
 	var fields []*model.SlackAttachmentField
-
-	//if included in the url, show the name of the platform at the aws account field
-	if alias != "" {
-		fields = addFields(fields, "AWS account", alias, true)
-	}
 
 	fields = addFields(fields, "StackId", messageNotification.StackId, true)
 	fields = addFields(fields, "StackName", messageNotification.StackName, true)
@@ -281,19 +270,13 @@ func (p *Plugin) createSNSCloudformationEventAttachment(subject string, messageN
 	return attachment
 }
 
-func (p *Plugin) createSNSMessageNotificationAttachment(subject string, messageNotification SNSMessageNotification, alias string) model.SlackAttachment {
+func (p *Plugin) createSNSMessageNotificationAttachment(subject string, messageNotification SNSMessageNotification) model.SlackAttachment {
 	p.API.LogDebug("AWSSNS HandleNotification", "MESSAGE", subject)
 	var fields []*model.SlackAttachmentField
 
-	//if included in the url, show the name of the platform at the aws account field
-	aws_account := string(messageNotification.AWSAccountID)
-	if alias != "" {
-		aws_account = alias + " ( " + aws_account + " ) "
-	}
-
 	fields = addFields(fields, "AlarmName", messageNotification.AlarmName, true)
 	fields = addFields(fields, "AlarmDescription", messageNotification.AlarmDescription, true)
-	fields = addFields(fields, "AWS Account", aws_account, true)
+	fields = addFields(fields, "AWS Account", messageNotification.AWSAccountID, true)
 	fields = addFields(fields, "Region", messageNotification.Region, true)
 	fields = addFields(fields, "New State", messageNotification.NewStateValue, true)
 	fields = addFields(fields, "Old State", messageNotification.OldStateValue, true)
