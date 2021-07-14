@@ -217,7 +217,7 @@ func (p *Plugin) isCloudformationEvent(message string) (bool, SNSCloudformationE
 	var messageNotification SNSCloudformationEventNotification
 
 	// alter message in order to decode it in json format
-	isCorrectFormat, messagejson := messageToJSON(message)
+	isCorrectFormat, messagejson := p.messageToJSON(message)
 
 	if !isCorrectFormat {
 		return false, messageNotification
@@ -254,7 +254,7 @@ func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification
 }
 
 func (p *Plugin) createSNSCloudformationEventAttachment(subject string, messageNotification SNSCloudformationEventNotification) model.SlackAttachment {
-	p.API.LogDebug("AWSSNS HandleNotification Cloudformation Event", "MESSAGE", subject)
+	p.API.LogDebug("AWSSNS HandleNotification Cloudformation Event", "SUBJECT", subject)
 	var fields []*model.SlackAttachmentField
 
 	fields = addFields(fields, "StackId", messageNotification.StackID, true)
@@ -541,20 +541,25 @@ func addFields(fields []*model.SlackAttachmentField, title, msg string, short bo
 	})
 }
 
-func messageToJSON(message string) (bool, []uint8) {
+func (p *Plugin) messageToJSON(message string) (bool, []byte) {
 	messagefields := strings.Split(message, "\n")
 	if len(messagefields) > 0 {
 		//split each line of the cloudformation event message to field and value
 		var fields = make(map[string]string)
 		for _, field := range messagefields[:len(messagefields)-1] {
-			if len(strings.Split(field, "=")) == 2 {
-				fields[strings.Split(field, "=")[0]] = strings.Split(field, "=")[1]
+			parts := strings.Split(field, "=")
+			if len(parts) == 2 {
+				fields[parts[0]] = parts[1]
 			} else {
 				return false, nil
 			}
 		}
 
-		jsonmessage, _ := json.Marshal(fields)
+		jsonmessage, err := json.Marshal(fields)
+		if err != nil {
+			p.API.LogError("Error marshaling in messageToJSON", "err", err.Error())
+			return false, nil
+		}
 
 		return true, jsonmessage
 	}
