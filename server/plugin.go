@@ -115,6 +115,7 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 		p.API.LogError("AWSSNS TOKEN INVALID")
 		return
 	}
+
 	snsMessageType := r.Header.Get("x-amz-sns-message-type")
 	if snsMessageType == "" {
 		p.handleAction(w, r)
@@ -154,6 +155,12 @@ func (p *Plugin) handleNotification(body io.Reader) {
 	var notification SNSNotification
 	if err := json.NewDecoder(body).Decode(&notification); err != nil {
 		p.API.LogDebug("AWSSNS HandleNotification Decode Error", "err=", err.Error())
+		return
+	}
+
+	if isCloudformationEvent, messageNotification := p.isCloudformationEvent(notification.Message); isCloudformationEvent {
+		p.API.LogDebug("Processing Cloudformation Event")
+		p.sendPostNotification(p.createSNSCloudformationEventAttachment(notification.Subject, messageNotification))
 		return
 	}
 
@@ -206,9 +213,31 @@ func (p *Plugin) isRDSEvent(message string) (bool, SNSRdsEventNotification) {
 	return len(messageNotification.EventID) > 0, messageNotification
 }
 
+func (p *Plugin) isCloudformationEvent(message string) (bool, SNSCloudformationEventNotification) {
+	var messageNotification SNSCloudformationEventNotification
+
+	// alter message in order to decode it in json format
+	isCorrectFormat, messagejson := p.messageToJSON(message)
+
+	if !isCorrectFormat {
+		return false, messageNotification
+	}
+
+	if err := json.Unmarshal(messagejson, &messageNotification); err != nil {
+		p.API.LogError(
+			"AWSSNS HandleNotification Decode Error on Cloudformation-Event message notification",
+			"err", err.Error(),
+			"message", messagejson)
+		return false, messageNotification
+	}
+	return len(messageNotification.EventID) > 0, messageNotification
+}
+
 func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification SNSRdsEventNotification) model.SlackAttachment {
 	p.API.LogDebug("AWSSNS HandleNotification RDS Event", "MESSAGE", subject)
+
 	var fields []*model.SlackAttachmentField
+
 	fields = addFields(fields, "Event Source", messageNotification.EventSource, true)
 	fields = addFields(fields, "Event Time", messageNotification.EventTime, true)
 	fields = addFields(fields, "Identifier Link", messageNotification.IdentifierLink, true)
@@ -224,9 +253,30 @@ func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification
 	return attachment
 }
 
+func (p *Plugin) createSNSCloudformationEventAttachment(subject string, messageNotification SNSCloudformationEventNotification) model.SlackAttachment {
+	p.API.LogDebug("AWSSNS HandleNotification Cloudformation Event", "SUBJECT", subject)
+	var fields []*model.SlackAttachmentField
+
+	fields = addFields(fields, "StackId", messageNotification.StackID, true)
+	fields = addFields(fields, "StackName", messageNotification.StackName, true)
+	fields = addFields(fields, "LogicalResourceId", messageNotification.LogicalResourceID, true)
+	fields = addFields(fields, "PhysicalResourceId", messageNotification.PhysicalResourceID, true)
+	fields = addFields(fields, "ResourceType", messageNotification.ResourceType, true)
+	fields = addFields(fields, "Timestamp", messageNotification.Timestamp, true)
+	fields = addFields(fields, "ResourceStatus", messageNotification.ResourceStatus, true)
+
+	attachment := model.SlackAttachment{
+		Title:  subject,
+		Fields: fields,
+	}
+
+	return attachment
+}
+
 func (p *Plugin) createSNSMessageNotificationAttachment(subject string, messageNotification SNSMessageNotification) model.SlackAttachment {
 	p.API.LogDebug("AWSSNS HandleNotification", "MESSAGE", subject)
 	var fields []*model.SlackAttachmentField
+
 	fields = addFields(fields, "AlarmName", messageNotification.AlarmName, true)
 	fields = addFields(fields, "AlarmDescription", messageNotification.AlarmDescription, true)
 	fields = addFields(fields, "AWS Account", messageNotification.AWSAccountID, true)
@@ -489,4 +539,29 @@ func addFields(fields []*model.SlackAttachmentField, title, msg string, short bo
 		Value: msg,
 		Short: model.SlackCompatibleBool(short),
 	})
+}
+
+func (p *Plugin) messageToJSON(message string) (bool, []byte) {
+	messagefields := strings.Split(message, "\n")
+	if len(messagefields) > 0 {
+		//split each line of the cloudformation event message to field and value
+		var fields = make(map[string]string)
+		for _, field := range messagefields[:len(messagefields)-1] {
+			parts := strings.Split(field, "=")
+			if len(parts) == 2 {
+				fields[parts[0]] = parts[1]
+			} else {
+				return false, nil
+			}
+		}
+
+		jsonmessage, err := json.Marshal(fields)
+		if err != nil {
+			p.API.LogError("Error marshaling in messageToJSON", "err", err.Error())
+			return false, nil
+		}
+
+		return true, jsonmessage
+	}
+	return false, nil
 }
