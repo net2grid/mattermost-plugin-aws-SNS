@@ -551,8 +551,14 @@ func addFields(fields []*model.SlackAttachmentField, title, msg string, short bo
 func messageToJSON(message string) ([]byte, error) {
 	messagefields := strings.Split(message, "\n")
 	if len(messagefields) > 0 {
-		// examine if the message refers to a cloudformation event by checking if StackId field is included in the first line
-		if strings.Split(messagefields[0], "=")[0] != "StackId" {
+		// examine if the message refers to a cloudformation event by checking if a valid StackId field is included in the first line
+		stackIdParts := strings.Split(messagefields[0], "=")
+		if len(stackIdParts) == 2 && stackIdParts[0] == "StackId" {
+			containsCloudformationArn := strings.Contains(stackIdParts[1], "arn:aws:cloudformation")
+			if !containsCloudformationArn {
+				return nil, errors.New("invalid StackId field")
+			}
+		} else {
 			return nil, nil
 		}
 
@@ -572,7 +578,7 @@ func messageToJSON(message string) ([]byte, error) {
 			if len(parts) == 2 && parts[1] != "" {
 				fields[parts[0]] = parts[1]
 			} else {
-				return nil, errors.New("format of message fields is incorrect")
+				return nil, errors.New("invalid format of Cloudformation event")
 			}
 		}
 
