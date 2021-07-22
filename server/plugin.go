@@ -552,9 +552,9 @@ func messageToJSON(message string) ([]byte, error) {
 	messagefields := strings.Split(message, "\n")
 	if len(messagefields) > 0 {
 		// examine if the message refers to a cloudformation event by checking if a valid StackId field is included in the first line
-		stackIdParts := strings.Split(messagefields[0], "=")
-		if len(stackIdParts) == 2 && stackIdParts[0] == "StackId" {
-			containsCloudformationArn := strings.Contains(stackIdParts[1], "arn:aws:cloudformation")
+		stackIDParts := strings.Split(messagefields[0], "=")
+		if len(stackIDParts) == 2 && stackIDParts[0] == "StackId" {
+			containsCloudformationArn := strings.Contains(stackIDParts[1], "arn:aws:cloudformation")
 			if !containsCloudformationArn {
 				return nil, errors.New("invalid StackId field")
 			}
