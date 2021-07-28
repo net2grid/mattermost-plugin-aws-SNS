@@ -556,7 +556,7 @@ func messageToJSON(message string) ([]byte, error) {
 		if len(stackIDParts) == 2 && stackIDParts[0] == "StackId" {
 			containsCloudformationArn := strings.Contains(stackIDParts[1], "arn:aws:cloudformation")
 			if !containsCloudformationArn {
-				return nil, errors.New("invalid StackId field")
+				return nil, errors.New("invalid value of StackId field")
 			}
 		} else {
 			return nil, nil
@@ -578,7 +578,7 @@ func messageToJSON(message string) ([]byte, error) {
 			if len(parts) == 2 && parts[1] != "" {
 				fields[parts[0]] = parts[1]
 			} else {
-				return nil, errors.New("invalid format of Cloudformation event")
+				return nil, errors.New("format of Cloudformation event message is incorrect")
 			}
 		}
 
