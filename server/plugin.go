@@ -589,5 +589,4 @@ func messageToJSON(message string) ([]byte, error) {
 		return nil, errors.Wrap(err, "Error marshaling in messageToJSON")
 	}
 	return jsonmessage, nil
-
 }
