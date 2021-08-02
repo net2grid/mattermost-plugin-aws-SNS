@@ -552,42 +552,42 @@ func messageToJSON(message string) ([]byte, error) {
 	messagefields := strings.Split(message, "\n")
 	if len(messagefields) == 0 {
 		return nil, errors.New("no message fields present in message string")
-	} else {
-		// examine if the message refers to a cloudformation event by checking if a valid StackId field is included in the first line
-		stackIDParts := strings.Split(messagefields[0], "=")
-		if len(stackIDParts) == 2 && stackIDParts[0] == "StackId" {
-			containsCloudformationArn := strings.Contains(stackIDParts[1], "arn:aws:cloudformation")
-			if !containsCloudformationArn {
-				return nil, errors.New("invalid value of StackId field")
-			}
-		} else {
-			return nil, nil
-		}
-
-		var numOfFields int
-
-		// if "\n" existed at the end of the message, do not parse the last field
-		if messagefields[len(messagefields)-1] == "" {
-			numOfFields = len(messagefields) - 1
-		} else {
-			numOfFields = len(messagefields)
-		}
-
-		//split each line of the cloudformation event message to field and value
-		var fields = make(map[string]string)
-		for _, field := range messagefields[:numOfFields] {
-			parts := strings.Split(field, "=")
-			if len(parts) == 2 && parts[1] != "" {
-				fields[parts[0]] = parts[1]
-			} else {
-				return nil, errors.New("format of Cloudformation event message is incorrect")
-			}
-		}
-
-		jsonmessage, err := json.Marshal(fields)
-		if err != nil {
-			return nil, errors.Wrap(err, "Error marshaling in messageToJSON")
-		}
-		return jsonmessage, nil
 	}
+	// examine if the message refers to a cloudformation event by checking if a valid StackId field is included in the first line
+	stackIDParts := strings.Split(messagefields[0], "=")
+	if len(stackIDParts) == 2 && stackIDParts[0] == "StackId" {
+		containsCloudformationArn := strings.Contains(stackIDParts[1], "arn:aws:cloudformation")
+		if !containsCloudformationArn {
+			return nil, errors.New("invalid value of StackId field")
+		}
+	} else {
+		return nil, nil
+	}
+
+	var numOfFields int
+
+	// if "\n" existed at the end of the message, do not parse the last field
+	if messagefields[len(messagefields)-1] == "" {
+		numOfFields = len(messagefields) - 1
+	} else {
+		numOfFields = len(messagefields)
+	}
+
+	//split each line of the cloudformation event message to field and value
+	var fields = make(map[string]string)
+	for _, field := range messagefields[:numOfFields] {
+		parts := strings.Split(field, "=")
+		if len(parts) == 2 && parts[1] != "" {
+			fields[parts[0]] = parts[1]
+		} else {
+			return nil, errors.New("format of Cloudformation event message is incorrect")
+		}
+	}
+
+	jsonmessage, err := json.Marshal(fields)
+	if err != nil {
+		return nil, errors.Wrap(err, "Error marshaling in messageToJSON")
+	}
+	return jsonmessage, nil
+
 }
