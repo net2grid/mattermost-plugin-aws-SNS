@@ -225,20 +225,27 @@ func (p *Plugin) isCloudformationEvent(message string) (bool, SNSCloudformationE
 	var messageNotification SNSCloudformationEventNotification
 
 	// alter message in order to decode it in json format
-	isCorrectFormat, messagejson := messageToJSON(message)
+	messagejson, err := messageToJSON(message)
 
-	if !isCorrectFormat {
-		return false, messageNotification
-	}
-
-	if err := json.Unmarshal(messagejson, &messageNotification); err != nil {
+	if err != nil {
 		p.API.LogError(
 			"AWSSNS HandleNotification Decode Error on Cloudformation-Event message notification",
 			"err", err.Error(),
-			"message", messagejson)
+			"message", message)
 		return false, messageNotification
 	}
-	return len(messageNotification.EventID) > 0, messageNotification
+
+	if messagejson != nil {
+		if err := json.Unmarshal(messagejson, &messageNotification); err != nil {
+			p.API.LogError(
+				"AWSSNS HandleNotification Decode Error on Cloudformation-Event message notification",
+				"err", err.Error(),
+				"message", message)
+			return false, messageNotification
+		}
+		return len(messageNotification.EventID) > 0, messageNotification
+	}
+	return false, messageNotification
 }
 
 func (p *Plugin) isOpenBucketAlert(message string) (bool, OpenBucketAlertsNotification) {
@@ -276,7 +283,7 @@ func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification
 }
 
 func (p *Plugin) createSNSCloudformationEventAttachment(subject string, messageNotification SNSCloudformationEventNotification) model.SlackAttachment {
-	p.API.LogDebug("AWSSNS HandleNotification Cloudformation Event", "MESSAGE", subject)
+	p.API.LogDebug("AWSSNS HandleNotification Cloudformation Event", "SUBJECT", subject)
 	var fields []*model.SlackAttachmentField
 
 	fields = addFields(fields, "StackId", messageNotification.StackID, true)
@@ -596,22 +603,45 @@ func addFields(fields []*model.SlackAttachmentField, title, msg string, short bo
 	})
 }
 
-func messageToJSON(message string) (bool, []uint8) {
+func messageToJSON(message string) ([]byte, error) {
 	messagefields := strings.Split(message, "\n")
-	if len(messagefields) > 0 {
-		//split each line of the cloudformation event message to field and value
-		var fields = make(map[string]string)
-		for _, field := range messagefields[:len(messagefields)-1] {
-			if len(strings.Split(field, "=")) == 2 {
-				fields[strings.Split(field, "=")[0]] = strings.Split(field, "=")[1]
-			} else {
-				return false, nil
-			}
-		}
-
-		jsonmessage, _ := json.Marshal(fields)
-
-		return true, jsonmessage
+	if len(messagefields) == 0 {
+		return nil, errors.New("no message fields present in message string")
 	}
-	return false, nil
+	// examine if the message refers to a cloudformation event by checking if a valid StackId field is included in the first line
+	stackIDParts := strings.Split(messagefields[0], "=")
+	if len(stackIDParts) == 2 && stackIDParts[0] == "StackId" {
+		containsCloudformationArn := strings.Contains(stackIDParts[1], "arn:aws:cloudformation")
+		if !containsCloudformationArn {
+			return nil, errors.New("invalid value of StackId field")
+		}
+	} else {
+		return nil, nil
+	}
+
+	var numOfFields int
+
+	// if "\n" existed at the end of the message, do not parse the last field
+	if messagefields[len(messagefields)-1] == "" {
+		numOfFields = len(messagefields) - 1
+	} else {
+		numOfFields = len(messagefields)
+	}
+
+	//split each line of the cloudformation event message to field and value
+	var fields = make(map[string]string)
+	for _, field := range messagefields[:numOfFields] {
+		parts := strings.Split(field, "=")
+		if len(parts) == 2 && parts[1] != "" {
+			fields[parts[0]] = parts[1]
+		} else {
+			return nil, errors.New("format of Cloudformation event message is incorrect")
+		}
+	}
+
+	jsonmessage, err := json.Marshal(fields)
+	if err != nil {
+		return nil, errors.Wrap(err, "Error marshaling in messageToJSON")
+	}
+	return jsonmessage, nil
 }
