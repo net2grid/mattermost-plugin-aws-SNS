@@ -162,7 +162,9 @@ func (p *Plugin) handleNotification(body io.Reader, alias string) {
 
 	if isCloudformationEvent, messageNotification := p.isCloudformationEvent(notification.Message); isCloudformationEvent {
 		p.API.LogDebug("Processing Cloudformation Event")
-		p.sendPostNotification(p.createSNSCloudformationEventAttachment(notification.Subject, messageNotification))
+		if strings.Contains(messageNotification.ResourceType, "AWS::CloudFormation::Stack") {
+			p.sendPostNotification(p.createSNSCloudformationEventAttachment(notification.Subject, messageNotification))
+		}
 		return
 	}
 
