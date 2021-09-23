@@ -182,7 +182,7 @@ func (p *Plugin) handleNotification(body io.Reader, alias string) {
 
 	if isOpenBucketAlert, messageNotification := p.isOpenBucketAlert(notification.Message); isOpenBucketAlert {
 		p.API.LogDebug("Processing Open Bucket Alert")
-		p.sendPostNotification(p.createOpenBucketAlertsNotificationAttachment(notification.Subject, messageNotification))
+		p.sendPostNotification(p.createOpenBucketAlertsNotificationAttachment(notification.Subject, messageNotification, alias))
 		return
 	}
 }
@@ -352,13 +352,20 @@ func (p *Plugin) createSNSMessageNotificationAttachment(subject string, messageN
 	return attachment
 }
 
-func (p *Plugin) createOpenBucketAlertsNotificationAttachment(subject string, messageNotification OpenBucketAlertsNotification) model.SlackAttachment {
+func (p *Plugin) createOpenBucketAlertsNotificationAttachment(subject string, messageNotification OpenBucketAlertsNotification, alias string) model.SlackAttachment {
 	p.API.LogDebug("AWSSNS HandleNotification Open Bucket Alert", "MESSAGE", subject)
 	var fields []*model.SlackAttachmentField
+
+	//if included in the url, show the name of the platform at the aws account field
+	aws_account := string(messageNotification.Account)
+	if alias != "" {
+		aws_account = alias + " ( " + aws_account + " ) "
+	}
 
 	fields = addFields(fields, "Version", messageNotification.Detail.Version, true)
 	fields = addFields(fields, "Id", messageNotification.Detail.Id, true)
 	fields = addFields(fields, "Time", messageNotification.Time, true)
+	fields = addFields(fields, "AWS Account", aws_account, true)
 	fields = addFields(fields, "Region", messageNotification.Region, true)
 	fields = addFields(fields, "Status", messageNotification.Detail.Status, true)
 	fields = addFields(fields, "ResourceType", messageNotification.Detail.ResourceType, true)
