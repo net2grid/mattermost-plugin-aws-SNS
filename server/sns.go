@@ -86,3 +86,33 @@ type SNSCloudformationEventNotification struct {
 	StackName            string `json:"StackName"`
 	ClientRequestToken   string `json:"ClientRequestToken"`
 }
+
+type OpenBucketAlertsNotification struct {
+	Version    string   `json:"version"`
+	ID         string   `json:"id"`
+	DetailType string   `json:"detail-type"`
+	Source     string   `json:"source"`
+	Account    string   `json:"account"`
+	Time       string   `json:"time"`
+	Region     string   `json:"region"`
+	Resources  []string `json:"resources"`
+	Detail     struct {
+		Version      string `json:"version"`
+		ID           string `json:"id"`
+		Status       string `json:"status"`
+		ResourceType string `json:"resourceType"`
+		Resource     string `json:"resource"`
+		CreatedAt    string `json:"createdAt"`
+		AnalyzedAt   string `json:"analyzedAt"`
+		UpdatedAt    string `json:"updatedAt"`
+		AccountID    string `json:"accountId"`
+		Region       string `json:"region"`
+		Principal    struct {
+			AWS string `json:"AWS"`
+		} `json:"principal"`
+		Action    []string `json:"action"`
+		Condition struct{} `json:"condition,omitempty"`
+		IsDeleted bool     `json:"isDeleted"`
+		IsPublic  bool     `json:"isPublic"`
+	} `json:"detail"`
+}
