@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,6 +46,7 @@ const topicsListPrefix = "topicsInChannel_"
 func (t *TeamChannel) String() string {
 	return fmt.Sprintf("TeamId: %s, TeamName: %s - ChannelId: %s, ChannelName: %s", t.TeamID, t.TeamName, t.ChannelID, t.ChannelName)
 }
+
 func (t *TeamChannel) NameString() string {
 	return fmt.Sprintf("%s,%s", t.TeamName, t.ChannelName)
 }
@@ -62,7 +65,6 @@ func (p *Plugin) OnActivate() error {
 	}
 
 	teamChannels, err := parseTeamChannelsNames(p.configuration.TeamChannel)
-
 	if err != nil {
 		return errors.New("teamChannel setting doesn't follow the pattern $TEAM_NAME,$CHANNEL_NAME")
 	}
@@ -72,11 +74,12 @@ func (p *Plugin) OnActivate() error {
 		return err
 	}
 
-	botID, err := p.client.Bot.EnsureBot(&model.Bot{
-		Username:    "aws-sns",
-		DisplayName: "AWS SNS Plugin",
-		Description: "A bot account created by the plugin AWS SNS",
-	},
+	botID, err := p.client.Bot.EnsureBot(
+		&model.Bot{
+			Username:    "aws-sns",
+			DisplayName: "AWS SNS Plugin",
+			Description: "A bot account created by the plugin AWS SNS",
+		},
 		pluginapi.ProfileImagePath("assets/icon.png"),
 	)
 	if err != nil {
@@ -101,7 +104,7 @@ func (p *Plugin) OnActivate() error {
 }
 
 func (p *Plugin) resolveAndSetTeamIDs(channels []*TeamChannel) ([]*TeamChannel, error) {
-	//mattermostChannels := []TeamChannel{}
+	// mattermostChannels := []TeamChannel{}
 	for _, teamChannel := range channels {
 		p.API.LogInfo("resolve for teamchannel", "tc", teamChannel)
 		team, appErr := p.API.GetTeamByName(teamChannel.TeamName)
@@ -115,8 +118,7 @@ func (p *Plugin) resolveAndSetTeamIDs(channels []*TeamChannel) ([]*TeamChannel, 
 
 func parseTeamChannelsNames(teamChannel string) ([]*TeamChannel, error) {
 	channels := []*TeamChannel{}
-	splitChannels := strings.Split(teamChannel, ";")
-	for _, splitChannel := range splitChannels {
+	for splitChannel := range strings.SplitSeq(teamChannel, ";") {
 		if len(splitChannel) < 1 {
 			continue
 		}
@@ -134,7 +136,8 @@ func parseTeamChannelsNames(teamChannel string) ([]*TeamChannel, error) {
 
 func (p *Plugin) getOrCreateChannel(teamChannel *TeamChannel) (string, error) {
 	channel, appErr := p.API.GetChannelByName(teamChannel.TeamID, teamChannel.ChannelName, false)
-	if appErr != nil && appErr.StatusCode == http.StatusNotFound {
+	switch {
+	case appErr != nil && appErr.StatusCode == http.StatusNotFound:
 		channelToCreate := &model.Channel{
 			Name:        teamChannel.ChannelName,
 			DisplayName: teamChannel.ChannelName,
@@ -149,13 +152,14 @@ func (p *Plugin) getOrCreateChannel(teamChannel *TeamChannel) (string, error) {
 			return "", errChannel
 		}
 		return newChannel.Id, nil
-	} else if appErr != nil {
+	case appErr != nil:
 		p.API.LogWarn("apperr", "error", appErr)
 		return "", appErr
-	} else {
+	default:
 		return channel.Id, nil
 	}
 }
+
 func (p *Plugin) getOrCreateMattermostChannels(teamChannels []*TeamChannel) ([]*TeamChannel, error) {
 	for _, teamChannel := range teamChannels {
 		channelID, err := p.getOrCreateChannel(teamChannel)
@@ -210,6 +214,7 @@ func (p *Plugin) ServeHTTP(c *plugin.Context, w http.ResponseWriter, r *http.Req
 		}
 	}
 }
+
 func (p *Plugin) checkToken(r *http.Request) error {
 	token := r.URL.Query().Get("token")
 	if token == "" || strings.Compare(token, p.configuration.Token) != 0 {
@@ -269,12 +274,12 @@ func (p *Plugin) handleNotification(body io.Reader, channel *TeamChannel) {
 	}
 }
 
-func (p *Plugin) sendPostNotification(attachment model.SlackAttachment, channel *TeamChannel) {
+func (p *Plugin) sendPostNotification(attachment model.MessageAttachment, channel *TeamChannel) {
 	post := &model.Post{
 		ChannelId: channel.ChannelID,
 		UserId:    p.BotUserID,
 	}
-	model.ParseSlackAttachment(post, []*model.SlackAttachment{&attachment})
+	model.ParseMessageAttachment(post, []*model.MessageAttachment{&attachment})
 	if _, appErr := p.API.CreatePost(post); appErr != nil {
 		return
 	}
@@ -286,7 +291,8 @@ func (p *Plugin) isCloudWatchAlarm(message string) (bool, SNSMessageNotification
 		p.API.LogError(
 			"AWSSNS HandleNotification Decode Error on CloudWatch message notification",
 			"err", err.Error(),
-			"message", message)
+			"message", message,
+		)
 		return false, messageNotification
 	}
 
@@ -299,7 +305,8 @@ func (p *Plugin) isRDSEvent(message string) (bool, SNSRdsEventNotification) {
 		p.API.LogError(
 			"AWSSNS HandleNotification Decode Error on RDS-Event message notification",
 			"err", err.Error(),
-			"message", message)
+			"message", message,
+		)
 		return false, messageNotification
 	}
 	return len(messageNotification.EventID) > 0, messageNotification
@@ -310,12 +317,12 @@ func (p *Plugin) isCloudformationEvent(message string) (bool, SNSCloudformationE
 
 	// alter message in order to decode it in json format
 	messagejson, err := messageToJSON(message)
-
 	if err != nil {
 		p.API.LogError(
 			"AWSSNS HandleNotification Decode Error on Cloudformation-Event message notification",
 			"err", err.Error(),
-			"message", message)
+			"message", message,
+		)
 		return false, messageNotification
 	}
 
@@ -324,7 +331,8 @@ func (p *Plugin) isCloudformationEvent(message string) (bool, SNSCloudformationE
 			p.API.LogError(
 				"AWSSNS HandleNotification Decode Error on Cloudformation-Event message notification",
 				"err", err.Error(),
-				"message", message)
+				"message", message,
+			)
 			return false, messageNotification
 		}
 		return len(messageNotification.EventID) > 0, messageNotification
@@ -332,10 +340,10 @@ func (p *Plugin) isCloudformationEvent(message string) (bool, SNSCloudformationE
 	return false, messageNotification
 }
 
-func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification SNSRdsEventNotification) model.SlackAttachment {
+func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification SNSRdsEventNotification) model.MessageAttachment {
 	p.API.LogDebug("AWSSNS HandleNotification RDS Event", "MESSAGE", subject)
 
-	var fields []*model.SlackAttachmentField
+	var fields []*model.MessageAttachmentField
 
 	fields = addFields(fields, "Event Source", messageNotification.EventSource, true)
 	fields = addFields(fields, "Event Time", messageNotification.EventTime, true)
@@ -344,7 +352,7 @@ func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification
 	fields = addFields(fields, "Event ID", messageNotification.EventID, true)
 	fields = addFields(fields, "Event Message", messageNotification.EventMessage, true)
 
-	attachment := model.SlackAttachment{
+	attachment := model.MessageAttachment{
 		Title:  subject,
 		Fields: fields,
 	}
@@ -352,9 +360,9 @@ func (p *Plugin) createSNSRdsEventAttachment(subject string, messageNotification
 	return attachment
 }
 
-func (p *Plugin) createSNSCloudformationEventAttachment(subject string, messageNotification SNSCloudformationEventNotification) model.SlackAttachment {
+func (p *Plugin) createSNSCloudformationEventAttachment(subject string, messageNotification SNSCloudformationEventNotification) model.MessageAttachment {
 	p.API.LogDebug("AWSSNS HandleNotification Cloudformation Event", "SUBJECT", subject)
-	var fields []*model.SlackAttachmentField
+	var fields []*model.MessageAttachmentField
 
 	fields = addFields(fields, "StackId", messageNotification.StackID, true)
 	fields = addFields(fields, "StackName", messageNotification.StackName, true)
@@ -364,7 +372,7 @@ func (p *Plugin) createSNSCloudformationEventAttachment(subject string, messageN
 	fields = addFields(fields, "Timestamp", messageNotification.Timestamp, true)
 	fields = addFields(fields, "ResourceStatus", messageNotification.ResourceStatus, true)
 
-	attachment := model.SlackAttachment{
+	attachment := model.MessageAttachment{
 		Title:  subject,
 		Fields: fields,
 	}
@@ -372,9 +380,9 @@ func (p *Plugin) createSNSCloudformationEventAttachment(subject string, messageN
 	return attachment
 }
 
-func (p *Plugin) createSNSMessageNotificationAttachment(subject string, messageNotification SNSMessageNotification) model.SlackAttachment {
+func (p *Plugin) createSNSMessageNotificationAttachment(subject string, messageNotification SNSMessageNotification) model.MessageAttachment {
 	p.API.LogDebug("AWSSNS HandleNotification", "MESSAGE", subject)
-	var fields []*model.SlackAttachmentField
+	var fields []*model.MessageAttachmentField
 
 	fields = addFields(fields, "AlarmName", messageNotification.AlarmName, true)
 	fields = addFields(fields, "AlarmDescription", messageNotification.AlarmDescription, true)
@@ -399,13 +407,14 @@ func (p *Plugin) createSNSMessageNotificationAttachment(subject string, messageN
 	fields = addFields(fields, "Dimensions", strings.Join(dimensions, "\n"), false)
 
 	msgColor := "#008000"
-	if messageNotification.NewStateValue == "ALARM" {
+	switch messageNotification.NewStateValue {
+	case "ALARM":
 		msgColor = "#FF0000"
-	} else if messageNotification.NewStateValue == "INSUFFICIENT" {
+	case "INSUFFICIENT":
 		msgColor = "#FFFF00"
 	}
 
-	attachment := model.SlackAttachment{
+	attachment := model.MessageAttachment{
 		Title:  subject,
 		Fields: fields,
 		Color:  msgColor,
@@ -413,6 +422,7 @@ func (p *Plugin) createSNSMessageNotificationAttachment(subject string, messageN
 
 	return attachment
 }
+
 func (p *Plugin) handleUnsubscribeConfirmation(body io.Reader, channel *TeamChannel) {
 	var subscribe SubscribeInput
 	if err := json.NewDecoder(body).Decode(&subscribe); err != nil {
@@ -431,7 +441,7 @@ func (p *Plugin) sendSubscribeConfirmationMessage(message string, subscriptionUR
 		Name: "Confirm Subscription",
 		Type: model.PostActionTypeButton,
 		Integration: &model.PostActionIntegration{
-			Context: map[string]interface{}{
+			Context: map[string]any{
 				"action":           "confirm",
 				"subscription_url": subscriptionURL,
 			},
@@ -440,13 +450,13 @@ func (p *Plugin) sendSubscribeConfirmationMessage(message string, subscriptionUR
 	}
 
 	actionMsg := strings.Split(message, ".")
-	sa1 := &model.SlackAttachment{
+	sa1 := &model.MessageAttachment{
 		Text: actionMsg[0],
 		Actions: []*model.PostAction{
 			action1,
 		},
 	}
-	attachments := make([]*model.SlackAttachment, 0)
+	attachments := make([]*model.MessageAttachment, 0)
 	attachments = append(attachments, sa1)
 
 	spinPost := &model.Post{
@@ -493,10 +503,14 @@ func (p *Plugin) handleAction(w http.ResponseWriter, r *http.Request) {
 			encodeEphermalMessage(w, err.Error())
 			return
 		}
-		defer resp.Body.Close()
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				p.API.LogError("AWSSNS Failed to close response body", "err=", err.Error())
+			}
+		}()
 
 		updatePost := &model.Post{}
-		updateAttachment := &model.SlackAttachment{}
+		updateAttachment := &model.MessageAttachment{}
 		actionPost, errPost := p.API.GetPost(action.PostID)
 		if errPost != nil {
 			p.API.LogError("AWSSNS Update Post Error", "err=", errPost.Error())
@@ -519,7 +533,7 @@ func (p *Plugin) handleAction(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			model.ParseSlackAttachment(updatePost, []*model.SlackAttachment{updateAttachment})
+			model.ParseMessageAttachment(updatePost, []*model.MessageAttachment{updateAttachment})
 			updatePost.Id = actionPost.Id
 			updatePost.ChannelId = actionPost.ChannelId
 			updatePost.UserId = actionPost.UserId
@@ -550,7 +564,7 @@ func (p *Plugin) handleAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Plugin) updateKVStore(topicName string, channelID string) error {
-	var topics = SNSTopics{}
+	topics := SNSTopics{}
 	val, err := p.API.KVGet(topicsListPrefix + channelID)
 	if err != nil {
 		p.API.LogError("Unable to Get from KV Store")
@@ -573,7 +587,10 @@ func (p *Plugin) updateKVStore(topicName string, channelID string) error {
 		p.API.LogError("Unable to marshal Topics struct to JSON")
 		return marshalErr
 	}
-	p.API.KVSet(topicsListPrefix+channelID, b)
+	if kvSetErr := p.API.KVSet(topicsListPrefix+channelID, b); kvSetErr != nil {
+		p.API.LogError("Unable to save Topics struct to KV Store", "err=", kvSetErr.Error())
+		return kvSetErr
+	}
 	return nil
 }
 
@@ -598,7 +615,10 @@ func (p *Plugin) deleteFromKVStore(topicName string, channelID string) error {
 		p.API.LogError("Unable to Marshal the Topics struct")
 		return err
 	}
-	p.API.KVSet(topicsListPrefix+channelID, b)
+	if kvSetErr := p.API.KVSet(topicsListPrefix+channelID, b); kvSetErr != nil {
+		p.API.LogError("Unable to save Topics struct to KV Store", "err=", kvSetErr.Error())
+		return kvSetErr
+	}
 	return nil
 }
 
@@ -607,14 +627,7 @@ func (p *Plugin) checkAllowedUsers(userID string) error {
 		return fmt.Errorf("need a user id")
 	}
 
-	hasPremissions := false
-	AllowedUserIds := strings.Split(p.configuration.AllowedUserIds, ",")
-	for _, allowedUserID := range AllowedUserIds {
-		if allowedUserID == userID {
-			hasPremissions = true
-			break
-		}
-	}
+	hasPremissions := slices.Contains(strings.Split(p.configuration.AllowedUserIds, ","), userID)
 
 	if !hasPremissions {
 		return fmt.Errorf("you don't have permissions to use this command. Please talk with your SysAdmin")
@@ -625,15 +638,17 @@ func (p *Plugin) checkAllowedUsers(userID string) error {
 
 func encodeEphermalMessage(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"ephemeral_text": message,
 	}
 
-	json.NewEncoder(w).Encode(payload)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("Failed to encode ephemeral message payload: %s", err.Error())
+	}
 }
 
-func addFields(fields []*model.SlackAttachmentField, title, msg string, short bool) []*model.SlackAttachmentField {
-	return append(fields, &model.SlackAttachmentField{
+func addFields(fields []*model.MessageAttachmentField, title, msg string, short bool) []*model.MessageAttachmentField {
+	return append(fields, &model.MessageAttachmentField{
 		Title: title,
 		Value: msg,
 		Short: model.SlackCompatibleBool(short),
@@ -665,8 +680,8 @@ func messageToJSON(message string) ([]byte, error) {
 		numOfFields = len(messagefields)
 	}
 
-	//split each line of the cloudformation event message to field and value
-	var fields = make(map[string]string)
+	// split each line of the cloudformation event message to field and value
+	fields := make(map[string]string)
 	for _, field := range messagefields[:numOfFields] {
 		parts := strings.Split(field, "=")
 		if len(parts) == 2 && parts[1] != "" {

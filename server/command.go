@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/mattermost/mattermost/server/public/model"
@@ -49,7 +48,7 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 	if cmd != awsSNSCmd {
 		return &model.CommandResponse{
 			ResponseType: model.CommandResponseTypeEphemeral,
-			Text:         fmt.Sprintf("Unknown Command: " + cmd),
+			Text:         "Unknown Command: " + cmd,
 		}, nil
 	}
 
@@ -59,7 +58,7 @@ func (p *Plugin) ExecuteCommand(c *plugin.Context, args *model.CommandArgs) (*mo
 	default:
 		return &model.CommandResponse{
 			ResponseType: model.CommandResponseTypeEphemeral,
-			Text:         fmt.Sprintf("Unknown Action: " + action),
+			Text:         "Unknown Action: " + action,
 		}, nil
 	}
 }
