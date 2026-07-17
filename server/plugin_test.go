@@ -88,7 +88,7 @@ func TestOnActivate(t *testing.T) {
 		"SiteURL is not set": {
 			SetupAPI: func(api *plugintest.API) *plugintest.API {
 				api.On("GetConfig").Return(&model.Config{ServiceSettings: model.ServiceSettings{
-					SiteURL: model.NewString(""),
+					SiteURL: model.NewPointer(""),
 				}})
 				return api
 			},
@@ -99,10 +99,10 @@ func TestOnActivate(t *testing.T) {
 				botUserID := "yei0BahL3cohya8vuaboShaeSi"
 
 				api.On("GetConfig").Return(&model.Config{ServiceSettings: model.ServiceSettings{
-					SiteURL: model.NewString("mattermost.com"),
+					SiteURL: model.NewPointer("mattermost.com"),
 				}})
 				api.On("LogInfo", mock.Anything, mock.Anything, mock.Anything).Return()
-				//p.API.GetTeamByName(teamChannel.TeamName)
+				// p.API.GetTeamByName(teamChannel.TeamName)
 				api.On("GetTeamByName", "team1").Return(&model.Team{Id: "teamId1"}, nil)
 				api.On("GetChannelByName", "teamId1", "channel1", false).Return(&model.Channel{Id: "channelId1"}, nil)
 
@@ -126,7 +126,8 @@ func TestOnActivate(t *testing.T) {
 			},
 			TeamChannel: "team1,channel1",
 			ExpectedChannels: []*TeamChannel{
-				{TeamName: "team1", ChannelName: "channel1", TeamID: "teamId1", ChannelID: "channelId1"}},
+				{TeamName: "team1", ChannelName: "channel1", TeamID: "teamId1", ChannelID: "channelId1"},
+			},
 			ShouldError: false,
 		},
 		"Valid multiple team channels": {
@@ -134,7 +135,7 @@ func TestOnActivate(t *testing.T) {
 				botUserID := "yei0BahL3cohya8vuaboShaeSi"
 
 				api.On("GetConfig").Return(&model.Config{ServiceSettings: model.ServiceSettings{
-					SiteURL: model.NewString("mattermost.com"),
+					SiteURL: model.NewPointer("mattermost.com"),
 				}})
 				api.On("LogInfo", mock.Anything, mock.Anything, mock.Anything).Return()
 
@@ -165,7 +166,8 @@ func TestOnActivate(t *testing.T) {
 			TeamChannel: "team1,channel1;team2,channel2",
 			ExpectedChannels: []*TeamChannel{
 				{TeamName: "team1", ChannelName: "channel1", TeamID: "teamId1", ChannelID: "channelId1"},
-				{TeamName: "team2", ChannelName: "channel2", TeamID: "teamId2", ChannelID: "channelId2"}},
+				{TeamName: "team2", ChannelName: "channel2", TeamID: "teamId2", ChannelID: "channelId2"},
+			},
 			ShouldError: false,
 		},
 	} {

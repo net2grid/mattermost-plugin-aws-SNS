@@ -12,7 +12,7 @@ type SubscribeInput struct {
 	TopicArn         string    `json:"TopicArn,omitempty"`
 	Message          string    `json:"Message,omitempty"`
 	SubscribeURL     string    `json:"SubscribeURL,omitempty"`
-	Timestamp        time.Time `json:"Timestamp,omitempty"`
+	Timestamp        time.Time `json:"Timestamp"`
 	SignatureVersion string    `json:"SignatureVersion,omitempty"`
 	Signature        string    `json:"Signature,omitempty"`
 	SigningCertURL   string    `json:"SigningCertURL,omitempty"`
@@ -26,7 +26,7 @@ type SNSNotification struct {
 	Subject          string    `json:"Subject,omitempty"`
 	Message          string    `json:"Message,omitempty"`
 	SubscribeURL     string    `json:"SubscribeURL,omitempty"`
-	Timestamp        time.Time `json:"Timestamp,omitempty"`
+	Timestamp        time.Time `json:"Timestamp"`
 	SignatureVersion string    `json:"SignatureVersion,omitempty"`
 	Signature        string    `json:"Signature,omitempty"`
 	SigningCertURL   string    `json:"SigningCertURL,omitempty"`
