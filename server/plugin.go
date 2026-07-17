@@ -245,6 +245,11 @@ func (p *Plugin) handleSubscriptionConfirmation(body io.Reader, channel *TeamCha
 		return
 	}
 
+	if !isValidSNSSubscribeURL(subscribe.SubscribeURL) {
+		p.API.LogError("AWSSNS Refused SubscriptionConfirmation with invalid SubscribeURL", "url", subscribe.SubscribeURL)
+		return
+	}
+
 	p.sendSubscribeConfirmationMessage(subscribe.Message, subscribe.SubscribeURL, channel)
 }
 
@@ -498,6 +503,11 @@ func (p *Plugin) handleAction(w http.ResponseWriter, r *http.Request) {
 
 	switch r.URL.Path {
 	case "/confirm":
+		if !isValidSNSSubscribeURL(action.Context.SubscriptionURL) {
+			encodeEphermalMessage(w, "SNS BOT Error: refusing to confirm subscription, SubscriptionURL is not a valid AWS SNS endpoint.")
+			p.API.LogError("AWSSNS Refused to fetch SubscriptionURL, invalid host", "url", action.Context.SubscriptionURL)
+			return
+		}
 		resp, err := http.Get(action.Context.SubscriptionURL)
 		if err != nil {
 			encodeEphermalMessage(w, err.Error())

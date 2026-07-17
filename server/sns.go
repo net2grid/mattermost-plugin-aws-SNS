@@ -1,8 +1,26 @@
 package main
 
 import (
+	"net/url"
+	"regexp"
 	"time"
 )
+
+// snsSubscribeURLPattern matches the host of a genuine AWS SNS SubscribeURL,
+// e.g. sns.eu-west-1.amazonaws.com or sns.us-gov-west-1.amazonaws.com.
+var snsSubscribeURLPattern = regexp.MustCompile(`(?i)^sns\.[a-z0-9-]+\.amazonaws\.com$`)
+
+// isValidSNSSubscribeURL reports whether rawURL is an HTTPS URL hosted on a
+// real AWS SNS endpoint. SubscribeURL comes straight from an inbound SNS
+// message, which is otherwise attacker-controllable, so this guards against
+// SSRF (the plugin would fetch whatever URL it's handed).
+func isValidSNSSubscribeURL(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "https" && snsSubscribeURLPattern.MatchString(parsed.Host)
+}
 
 // SubscribeInput - holds subscription and unsubscription confirmation
 type SubscribeInput struct {
